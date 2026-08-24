@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>指揮中心後台 - E-Badge</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #11161d;
+    --panel-border: #232a34;
+    --text: #e8ecf1;
+    --text-dim: #8b96a5;
+    --red: #e5484d;
+    --yellow: #e0b400;
+    --green: #3fb950;
+    --black: #9aa4b2;
+    --accent: #2f81f7;
+    --danger: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  .layout { display: flex; height: 100vh; }
+
+  .sidebar {
+    width: 320px; flex-shrink: 0;
+    background: var(--panel); border-right: 1px solid var(--panel-border);
+    padding: 24px 20px;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .sidebar h2 { font-size: 15px; font-weight: 600; margin: 0 0 18px 0; }
+  .total-number { font-size: 42px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .total-label { color: var(--text-dim); font-size: 13px; margin-bottom: 20px; }
+
+  .stat-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-bottom: 1px solid var(--panel-border); font-size: 14px;
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { display: flex; align-items: center; gap: 10px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .dot-red { background: var(--red); }
+  .dot-yellow { background: var(--yellow); }
+  .dot-green { background: var(--green); }
+  .dot-black { background: var(--black); }
+  .dot-grey { background: #444; }
+  .stat-count { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .list-header {
+    margin-top: 24px; margin-bottom: 10px; font-size: 13px; font-weight: 600;
+    color: var(--text-dim); letter-spacing: 0.03em;
+  }
+  .patient-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+  .patient-list::-webkit-scrollbar { width: 6px; }
+  .patient-list::-webkit-scrollbar-thumb { background: var(--panel-border); border-radius: 3px; }
+  .patient-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 10px; border-radius: 8px;
+    background: #161c25; border: 1px solid transparent; cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .patient-item:hover { border-color: var(--accent); background: #1a2230; }
+  .patient-badge { font-size: 13px; font-weight: 600; flex: 1; }
+  .patient-time { font-size: 11px; color: var(--text-dim); }
+  .empty-note { padding: 20px 4px; color: var(--text-dim); font-size: 13px; }
+
+  .reset-data-btn {
+    margin-top: 14px; padding: 10px; border-radius: 9px;
+    background: transparent; border: 1px solid var(--danger);
+    color: var(--danger); font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .reset-data-btn:hover { background: rgba(229,72,77,0.1); }
+
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    padding: 12px 24px; border-bottom: 1px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: space-between; background: var(--panel);
+  }
+  .tabs { display: flex; gap: 6px; }
+  .tab-btn {
+    padding: 9px 18px; border-radius: 9px; border: 1px solid var(--panel-border);
+    background: transparent; color: var(--text-dim); font-size: 14px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+  }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .sync-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(63,185,80,0.5); }
+    70% { box-shadow: 0 0 0 8px rgba(63,185,80,0); }
+    100% { box-shadow: 0 0 0 0 rgba(63,185,80,0); }
+  }
+  .lang-btn {
+    padding: 7px 14px; border-radius: 20px; border: 1px solid var(--panel-border);
+    background: transparent; color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+  .lang-btn:hover { border-color: var(--accent); }
+
+  .view { display: none; flex: 1; overflow: hidden; }
+  .view.active { display: flex; flex-direction: column; }
+
+  #map { flex: 1; background: #1a1e24; }
+  .leaflet-popup-content-wrapper { background: var(--panel); color: var(--text); border: 1px solid var(--panel-border); }
+  .leaflet-popup-tip { background: var(--panel); }
+  .popup-title { font-weight: 700; margin-bottom: 4px; }
+  .popup-sub { font-size: 12px; color: var(--text-dim); }
+
+  .bedmap-scroll { flex: 1; overflow-y: auto; padding: 24px; }
+  .bedmap-legend { display: flex; gap: 20px; margin-bottom: 20px; font-size: 13px; color: var(--text-dim); }
+  .bedmap-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .ward-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .ward-card { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; padding: 18px; }
+  .ward-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .ward-title-sub { font-size: 12px; color: var(--text-dim); font-weight: 400; }
+  .bed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .bed-slot {
+    border-radius: 10px; padding: 10px; min-height: 70px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    border: 1.5px solid var(--panel-border); background: #161c25;
+  }
+  .bed-slot.clickable { cursor: pointer; }
+  .bed-slot.clickable:hover { border-color: var(--accent); }
+  .bed-slot.empty { opacity: 0.4; align-items: center; justify-content: center; }
+  .bed-slot-num { font-size: 10.5px; color: var(--text-dim); }
+  .bed-slot-name { font-size: 13px; font-weight: 700; margin-top: 2px; }
+  .bed-status-chip { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; align-self: flex-start; margin-top: 4px; }
+  .bed-slot.status-未疏散 { border-color: #3a4150; }
+  .bed-slot.status-待疏散 { border-color: var(--yellow); background: #2a2410; }
+  .bed-slot.status-已疏散 { border-color: var(--green); background: #10241a; }
+  .chip-未疏散 { background: #3a415033; color: #9aa4b2; }
+  .chip-待疏散 { background: #e0b40033; color: var(--yellow); }
+  .chip-已疏散 { background: #3fb95033; color: var(--green); }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); align-items: center; justify-content: center; z-index: 1000; }
+  .modal-overlay.open { display: flex; }
+  .modal-box { width: 360px; max-width: 90vw; background: var(--panel); border: 1px solid var(--panel-border); border-radius: 14px; padding: 22px; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .modal-title { font-size: 17px; font-weight: 700; }
+  .modal-close { cursor: pointer; color: var(--text-dim); font-size: 20px; line-height: 1; background: none; border: none; }
+  .modal-close:hover { color: var(--text); }
+  .modal-badge-chip { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+  .modal-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--panel-border); font-size: 13.5px; }
+  .modal-row:last-child { border-bottom: none; }
+  .modal-row-label { color: var(--text-dim); }
+  .modal-row-value { font-weight: 600; text-align: right; }
+  .modal-actions { margin-top: 18px; }
+  .modal-btn { width: 100%; padding: 10px; border-radius: 10px; background: var(--accent); color: #fff; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .modal-btn:hover { opacity: 0.9; }
+  .modal-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+    <h2 id="txt-sidebarTitle">👥 疏散統計</h2>
+    <div class="total-number" id="totalCount">0</div>
+    <div class="total-label" id="txt-totalLabel">已檢傷總人數</div>
+
+    <div class="stat-row"><div class="stat-label"><span class="dot dot-red"></span><span id="txt-red">紅 RED</span></div><div class="stat-count" id="countRed">0</div></div>
+    <div class="stat-row"><div class="stat-label"><span class="dot dot-yellow"></span><span id="txt-yellow">黃 YELLOW</span></div><div class="stat-count" id="countYellow">0</div></div>
+    <div class="stat-row"><div class="stat-label"><span class="dot dot-green"></span><span id="txt-green">綠 GREEN</span></div><div class="stat-count" id="countGreen">0</div></div>
+    <div class="stat-row"><div class="stat-label"><span class="dot dot-black"></span><span id="txt-black">黑 BLACK</span></div><div class="stat-count" id="countBlack">0</div></div>
+
+    <div class="list-header" id="txt-listHeader">📋 病患清單（點擊查看詳情）</div>
+    <div class="patient-list" id="patientList">
+      <div class="empty-note" id="txt-noTriage">目前還沒有檢傷紀錄</div>
+    </div>
+
+    <button class="reset-data-btn" id="resetDataBtn">🗑️ 重置資料（回到 T0）</button>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="tabs">
+        <button class="tab-btn active" id="tabMapBtn">🗺️ <span id="txt-tabMap">戰術地圖</span></button>
+        <button class="tab-btn" id="tabBedBtn">🛏️ <span id="txt-tabBed">虛擬病床圖</span></button>
+      </div>
+      <div class="topbar-right">
+        <div class="sync-status"><span class="sync-dot"></span><span id="txt-sync">即時同步</span></div>
+        <button class="lang-btn" id="langBtn">EN</button>
+      </div>
+    </div>
+
+    <div class="view active" id="viewMap">
+      <div id="map"></div>
+    </div>
+
+    <div class="view" id="viewBed">
+      <div class="bedmap-scroll">
+        <div class="bedmap-legend">
+          <span><span class="dot dot-grey"></span><span id="txt-legendNone">未疏散</span></span>
+          <span><span class="dot dot-yellow"></span><span id="txt-legendPending">待疏散（廣播已發送，尚未檢傷）</span></span>
+          <span><span class="dot dot-green"></span><span id="txt-legendDone">已疏散（檢傷完成）</span></span>
+        </div>
+        <div class="ward-grid" id="wardGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modalBadgeId">—</div>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="modal-badge-chip" id="modalColorChip">—</div>
+    <div class="modal-row"><div class="modal-row-label" id="txt-modalBed">床位</div><div class="modal-row-value" id="modalBed">—</div></div>
+    <div class="modal-row"><div class="modal-row-label" id="txt-modalSub">細項</div><div class="modal-row-value" id="modalSub">—</div></div>
+    <div class="modal-row"><div class="modal-row-label" id="txt-modalBasic">初步處置 BASIC</div><div class="modal-row-value" id="modalBasic">—</div></div>
+    <div class="modal-row"><div class="modal-row-label" id="txt-modalTime">檢傷時間</div><div class="modal-row-value" id="modalTime">—</div></div>
+    <div class="modal-actions">
+      <button class="modal-btn" id="modalLocateBtn">在地圖上定位</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── 雙語字典 ──
+  const I18N = {
+    zh: {
+      sidebarTitle: '👥 疏散統計',
+      totalLabel: '已檢傷總人數',
+      red: '紅 RED', yellow: '黃 YELLOW', green: '綠 GREEN', black: '黑 BLACK',
+      listHeader: '📋 病患清單（點擊查看詳情）',
+      noTriage: '目前還沒有檢傷紀錄',
+      noResidents: '目前還沒有病人資料',
+      resetBtn: '🗑️ 重置資料（回到 T0）',
+      tabMap: '戰術地圖', tabBed: '虛擬病床圖', sync: '即時同步',
+      legendNone: '未疏散',
+      legendPending: '待疏散（廣播已發送，尚未檢傷）',
+      legendDone: '已疏散（檢傷完成）',
+      modalBed: '床位', modalSub: '細項', modalBasic: '初步處置 BASIC', modalTime: '檢傷時間',
+      modalLocate: '在地圖上定位',
+      notTriaged: '尚未檢傷',
+      dash: '—',
+      updatedAt: '更新時間：',
+      ward: (n) => `病房 ${n}`,
+      evacuatedCount: (done, total) => `（${done}/${total} 已疏散）`,
+      bedEmpty: (n) => `床 ${n}（空床）`,
+      bedNum: (n, id) => `床 ${n} · ${id}`,
+      unnamed: '（未命名）',
+      status: { '未疏散': '未疏散', '待疏散': '待疏散', '已疏散': '已疏散' },
+      colorLabel: { green: '綠 GREEN', yellow: '黃 YELLOW', red: '紅 RED', black: '黑 BLACK' },
+      basicLabel: { B: '控制出血', A: '暢通呼吸道', S: '預防休克', I: '頸椎固定', C: '檢傷分類' },
+      resetConfirm: '確定要重置資料嗎？\n\n這會清空所有檢傷紀錄、疏散廣播狀態、以及地圖上的定位資料，讓畫面回到 T0（尚未開始）的乾淨狀態。此動作無法復原。',
+      resetDone: '已重置完成，畫面會自動回到 T0 狀態。',
+      resetFail: '重置失敗：',
+      langBtnLabel: 'EN',
+    },
+    en: {
+      sidebarTitle: '👥 Evacuation Stats',
+      totalLabel: 'Total Triaged',
+      red: 'RED', yellow: 'YELLOW', green: 'GREEN', black: 'BLACK',
+      listHeader: '📋 Patient List (tap for details)',
+      noTriage: 'No triage records yet',
+      noResidents: 'No patient data yet',
+      resetBtn: '🗑️ Reset Data (back to T0)',
+      tabMap: 'Tactical Map', tabBed: 'Virtual Bed Map', sync: 'Live Sync',
+      legendNone: 'Not Evacuated',
+      legendPending: 'Pending (broadcast sent, not yet triaged)',
+      legendDone: 'Evacuated (triage complete)',
+      modalBed: 'Bed', modalSub: 'Sub-category', modalBasic: 'Initial Care (BASIC)', modalTime: 'Triage Time',
+      modalLocate: 'Locate on Map',
+      notTriaged: 'Not Triaged Yet',
+      dash: '—',
+      updatedAt: 'Updated: ',
+      ward: (n) => `Ward ${n}`,
+      evacuatedCount: (done, total) => `(${done}/${total} evacuated)`,
+      bedEmpty: (n) => `Bed ${n} (empty)`,
+      bedNum: (n, id) => `Bed ${n} · ${id}`,
+      unnamed: '(Unnamed)',
+      status: { '未疏散': 'Not Evacuated', '待疏散': 'Pending', '已疏散': 'Evacuated' },
+      colorLabel: { green: 'GREEN', yellow: 'YELLOW', red: 'RED', black: 'BLACK' },
+      basicLabel: { B: 'Bleeding', A: 'Airway', S: 'Shock', I: 'Immobilization', C: 'Classification' },
+      resetConfirm: 'Are you sure you want to reset all data?\n\nThis will clear all triage records, evacuation broadcast status, and map location data, returning to a clean T0 state. This cannot be undone.',
+      resetDone: 'Reset complete. The screen will automatically return to T0.',
+      resetFail: 'Reset failed: ',
+      langBtnLabel: '中',
+    },
+  };
+
+  let lang = localStorage.getItem('dashboard_lang') || 'zh';
+  function dt(key) { return I18N[lang][key]; }
+
+  function applyStaticTranslations() {
+    document.getElementById('txt-sidebarTitle').textContent = dt('sidebarTitle');
+    document.getElementById('txt-totalLabel').textContent = dt('totalLabel');
+    document.getElementById('txt-red').textContent = dt('red');
+    document.getElementById('txt-yellow').textContent = dt('yellow');
+    document.getElementById('txt-green').textContent = dt('green');
+    document.getElementById('txt-black').textContent = dt('black');
+    document.getElementById('txt-listHeader').textContent = dt('listHeader');
+    document.getElementById('resetDataBtn').textContent = dt('resetBtn');
+    document.getElementById('txt-tabMap').textContent = dt('tabMap');
+    document.getElementById('txt-tabBed').textContent = dt('tabBed');
+    document.getElementById('txt-sync').textContent = dt('sync');
+    document.getElementById('txt-legendNone').textContent = dt('legendNone');
+    document.getElementById('txt-legendPending').textContent = dt('legendPending');
+    document.getElementById('txt-legendDone').textContent = dt('legendDone');
+    document.getElementById('txt-modalBed').textContent = dt('modalBed');
+    document.getElementById('txt-modalSub').textContent = dt('modalSub');
+    document.getElementById('txt-modalBasic').textContent = dt('modalBasic');
+    document.getElementById('txt-modalTime').textContent = dt('modalTime');
+    document.getElementById('modalLocateBtn').textContent = dt('modalLocate');
+    document.getElementById('langBtn').textContent = dt('langBtnLabel');
+
+    // 空清單提示文字只有在真的是空的時候才更新，避免蓋掉正在顯示的資料
+    const patientListEl = document.getElementById('patientList');
+    if (patientListEl.children.length === 1 && patientListEl.children[0].id !== '') {
+      // 由 renderPatientList 之後統一重繪，這裡不用特別處理
+    }
+  }
+
+  document.getElementById('langBtn').addEventListener('click', () => {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    localStorage.setItem('dashboard_lang', lang);
+    applyStaticTranslations();
+    renderPatientList(cachedTriageRecords);
+    renderWardGrid();
+    refreshAllMarkerPopups();
+    if (currentModalBadgeId) openModal(currentModalBadgeId);
+  });
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAeksA4tfRt1JBsAG4F89BvZE--LifIAng",
+    authDomain: "ebadge-4d6e9.firebaseapp.com",
+    databaseURL: "https://ebadge-4d6e9-default-rtdb.firebaseio.com",
+    projectId: "ebadge-4d6e9",
+    storageBucket: "ebadge-4d6e9.firebasestorage.app",
+    messagingSenderId: "847439999989",
+    appId: "1:847439999989:web:4eef64f41b144a274da6bc"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const tabMapBtn = document.getElementById('tabMapBtn');
+  const tabBedBtn = document.getElementById('tabBedBtn');
+  const viewMap = document.getElementById('viewMap');
+  const viewBed = document.getElementById('viewBed');
+  let mapInitialized = false;
+
+  tabMapBtn.addEventListener('click', () => {
+    tabMapBtn.classList.add('active'); tabBedBtn.classList.remove('active');
+    viewMap.classList.add('active'); viewBed.classList.remove('active');
+    if (mapInitialized) setTimeout(() => map.invalidateSize(), 50);
+  });
+  tabBedBtn.addEventListener('click', () => {
+    tabBedBtn.classList.add('active'); tabMapBtn.classList.remove('active');
+    viewBed.classList.add('active'); viewMap.classList.remove('active');
+  });
+
+  const map = L.map('map', { zoomControl: true }).setView([25.05, 121.52], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19
+  }).addTo(map);
+  mapInitialized = true;
+
+  const colorMap = { green: '#3fb950', yellow: '#e0b400', red: '#e5484d', black: '#9aa4b2' };
+  const basicKeyLabel = { B: 'B', A: 'A', S: 'S', I: 'I', C: 'C' };
+
+  const markers = {};
+  const markerCoords = {}; // badgeId -> {lat,lng,updatedAt}，重繪popup時要用
+  const triageColorByBadge = {};
+  const triageDataByBadge = {};
+  const locationByBadge = {};
+  let residentsList = [];
+  let evacuationTriggeredAt = null;
+  let cachedTriageRecords = [];
+
+  function nameForBadge(badgeId) {
+    const r = residentsList.find(x => x.badge_id === badgeId);
+    return (r && r.name) ? r.name : badgeId;
+  }
+
+  function colorForBadge(badgeId) {
+    return colorMap[triageColorByBadge[badgeId]] || '#2f81f7';
+  }
+  function makeIcon(color) {
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 0 6px rgba(0,0,0,0.5);"></div>`,
+      iconSize: [18, 18], iconAnchor: [9, 9]
+    });
+  }
+  function popupHtml(badgeId, updatedAt) {
+    const name = nameForBadge(badgeId);
+    const titleLine = name !== badgeId ? `${name}（${badgeId}）` : badgeId;
+    return `<div class="popup-title">${titleLine}</div><div class="popup-sub">${dt('updatedAt')}${updatedAt || dt('dash')}</div>`;
+  }
+  function upsertMarker(badgeId, lat, lng, updatedAt) {
+    locationByBadge[badgeId] = { lat, lng };
+    markerCoords[badgeId] = { lat, lng, updatedAt };
+    const color = colorForBadge(badgeId);
+    if (markers[badgeId]) {
+      markers[badgeId].setLatLng([lat, lng]);
+      markers[badgeId].setIcon(makeIcon(color));
+    } else {
+      markers[badgeId] = L.marker([lat, lng], { icon: makeIcon(color) }).addTo(map);
+    }
+    markers[badgeId].bindPopup(popupHtml(badgeId, updatedAt));
+  }
+  function refreshAllMarkerPopups() {
+    Object.keys(markers).forEach((badgeId) => {
+      const c = markerCoords[badgeId];
+      if (c) markers[badgeId].bindPopup(popupHtml(badgeId, c.updatedAt));
+    });
+  }
+
+  db.collection('device_locations').onSnapshot((snapshot) => {
+    const currentBadgeIds = new Set();
+    let hasAny = false;
+    snapshot.forEach((docSnap) => {
+      hasAny = true;
+      const d = docSnap.data();
+      const badgeId = d.badge_id || docSnap.id;
+      currentBadgeIds.add(badgeId);
+      if (typeof d.latitude === 'number' && typeof d.longitude === 'number') {
+        const updatedAt = d.updated_at && d.updated_at.toDate ? d.updated_at.toDate().toLocaleString('zh-TW') : '';
+        upsertMarker(badgeId, d.latitude, d.longitude, updatedAt);
+      }
+    });
+
+    Object.keys(markers).forEach((badgeId) => {
+      if (!currentBadgeIds.has(badgeId)) {
+        map.removeLayer(markers[badgeId]);
+        delete markers[badgeId];
+        delete locationByBadge[badgeId];
+        delete markerCoords[badgeId];
+      }
+    });
+
+    if (hasAny && Object.keys(markers).length > 0) {
+      const group = L.featureGroup(Object.values(markers));
+      map.fitBounds(group.getBounds().pad(0.3), { maxZoom: 16 });
+    }
+  });
+
+  function renderPatientList(records) {
+    const listEl = document.getElementById('patientList');
+    if (records.length === 0) {
+      listEl.innerHTML = `<div class="empty-note">${dt('noTriage')}</div>`;
+      return;
+    }
+    listEl.innerHTML = '';
+    records.forEach((r) => {
+      const item = document.createElement('div');
+      item.className = 'patient-item';
+      const color = colorMap[r.triage_color] || '#666';
+      const timeStr = r.timestamp && r.timestamp.toDate ? r.timestamp.toDate().toLocaleTimeString('zh-TW') : '';
+      const nameStr = nameForBadge(r.badge_id);
+      item.innerHTML = `<span class="dot" style="background:${color}"></span><span class="patient-badge">${nameStr}</span><span class="patient-time">${timeStr}</span>`;
+      item.addEventListener('click', () => openModal(r.badge_id));
+      listEl.appendChild(item);
+    });
+  }
+
+  db.collection('triage_records').onSnapshot((snapshot) => {
+    const counts = { red: 0, yellow: 0, green: 0, black: 0 };
+    Object.keys(triageColorByBadge).forEach(k => delete triageColorByBadge[k]);
+    Object.keys(triageDataByBadge).forEach(k => delete triageDataByBadge[k]);
+
+    const records = [];
+    snapshot.forEach((docSnap) => {
+      const d = docSnap.data();
+      const badgeId = d.badge_id || docSnap.id;
+      if (counts.hasOwnProperty(d.triage_color)) counts[d.triage_color]++;
+      triageColorByBadge[badgeId] = d.triage_color;
+      triageDataByBadge[badgeId] = d;
+      records.push(d);
+    });
+
+    records.sort((a, b) => {
+      const ta = a.timestamp && a.timestamp.toDate ? a.timestamp.toDate().getTime() : 0;
+      const tb = b.timestamp && b.timestamp.toDate ? b.timestamp.toDate().getTime() : 0;
+      return tb - ta;
+    });
+
+    document.getElementById('countRed').textContent = counts.red;
+    document.getElementById('countYellow').textContent = counts.yellow;
+    document.getElementById('countGreen').textContent = counts.green;
+    document.getElementById('countBlack').textContent = counts.black;
+    document.getElementById('totalCount').textContent = counts.red + counts.yellow + counts.green + counts.black;
+
+    Object.keys(markers).forEach((badgeId) => markers[badgeId].setIcon(makeIcon(colorForBadge(badgeId))));
+
+    renderPatientList(records);
+    cachedTriageRecords = records;
+    renderWardGrid();
+  });
+
+  db.collection('residents').onSnapshot((snapshot) => {
+    residentsList = [];
+    snapshot.forEach((docSnap) => {
+      residentsList.push({ badge_id: docSnap.id, ...docSnap.data() });
+    });
+    renderPatientList(cachedTriageRecords);
+    refreshAllMarkerPopups();
+    renderWardGrid();
+  });
+
+  db.collection('evacuation_status').doc('current').onSnapshot((docSnap) => {
+    if (docSnap.exists && docSnap.data().triggered) {
+      const d = docSnap.data();
+      evacuationTriggeredAt = d.triggered_at && d.triggered_at.toDate ? d.triggered_at.toDate() : new Date(0);
+    } else {
+      evacuationTriggeredAt = null;
+    }
+    renderWardGrid();
+  });
+
+  // 回傳的是內部狀態鍵值（固定中文，拿去做 CSS class 比對用，不受語言切換影響）
+  function getBedStatus(badgeId) {
+    if (!evacuationTriggeredAt) return '未疏散';
+    const record = triageDataByBadge[badgeId];
+    if (!record) return '待疏散';
+    const recordTime = record.timestamp && record.timestamp.toDate ? record.timestamp.toDate() : null;
+    if (recordTime && recordTime.getTime() > evacuationTriggeredAt.getTime()) return '已疏散';
+    return '待疏散';
+  }
+
+  function renderWardGrid() {
+    const wardGridEl = document.getElementById('wardGrid');
+    if (residentsList.length === 0) {
+      wardGridEl.innerHTML = `<div class="empty-note">${dt('noResidents')}</div>`;
+      return;
+    }
+
+    const wardNumbers = [1, 2, 3, 4];
+    wardGridEl.innerHTML = '';
+
+    wardNumbers.forEach((wardNum) => {
+      const card = document.createElement('div');
+      card.className = 'ward-card';
+
+      const residentsInWard = residentsList.filter(r => r.ward_number === wardNum);
+      const doneCount = residentsInWard.filter(r => getBedStatus(r.badge_id) === '已疏散').length;
+
+      card.innerHTML = `<div class="ward-title">${dt('ward')(wardNum)} <span class="ward-title-sub">${dt('evacuatedCount')(doneCount, residentsInWard.length)}</span></div>`;
+
+      const bedGrid = document.createElement('div');
+      bedGrid.className = 'bed-grid';
+
+      for (let bedNum = 1; bedNum <= 6; bedNum++) {
+        const resident = residentsInWard.find(r => r.bed_number === bedNum);
+        const slot = document.createElement('div');
+
+        if (!resident) {
+          slot.className = 'bed-slot empty';
+          slot.innerHTML = `<div class="bed-slot-num">${dt('bedEmpty')(bedNum)}</div>`;
+        } else {
+          const status = getBedStatus(resident.badge_id);
+          slot.className = `bed-slot clickable status-${status}`;
+          slot.innerHTML = `
+            <div>
+              <div class="bed-slot-num">${dt('bedNum')(bedNum, resident.badge_id)}</div>
+              <div class="bed-slot-name">${resident.name || dt('unnamed')}</div>
+            </div>
+            <div class="bed-status-chip chip-${status}">${dt('status')[status]}</div>
+          `;
+          slot.addEventListener('click', () => openModal(resident.badge_id));
+        }
+        bedGrid.appendChild(slot);
+      }
+
+      card.appendChild(bedGrid);
+      wardGridEl.appendChild(card);
+    });
+  }
+
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalLocateBtn = document.getElementById('modalLocateBtn');
+  let currentModalBadgeId = null;
+
+  function openModal(badgeId) {
+    const resident = residentsList.find(r => r.badge_id === badgeId);
+    const d = triageDataByBadge[badgeId];
+    currentModalBadgeId = badgeId;
+
+    const displayName = (d && d.name) || (resident && resident.name) || badgeId;
+    document.getElementById('modalBadgeId').textContent = displayName !== badgeId ? `${displayName}（${badgeId}）` : badgeId;
+
+    const chip = document.getElementById('modalColorChip');
+    if (d) {
+      const color = colorMap[d.triage_color] || '#555';
+      chip.textContent = dt('colorLabel')[d.triage_color] || d.triage_color || dt('dash');
+      chip.style.background = color + '33';
+      chip.style.color = color;
+    } else {
+      chip.textContent = dt('notTriaged');
+      chip.style.background = '#3a415033';
+      chip.style.color = '#9aa4b2';
+    }
+
+    const bedParts = [
+      (d && d.building) || (resident && resident.building),
+      (d && d.room) || (resident && resident.room),
+      (d && d.bed) || (resident && resident.bed)
+    ].filter(Boolean);
+    document.getElementById('modalBed').textContent = bedParts.length > 0 ? bedParts.join(' ') : dt('dash');
+
+    document.getElementById('modalSub').textContent = (d && d.triage_sub) || dt('dash');
+
+    const basicArr = d && Array.isArray(d.basic_done) ? d.basic_done : [];
+    document.getElementById('modalBasic').textContent = basicArr.length > 0 ? basicArr.map(k => dt('basicLabel')[k] || k).join('、') : dt('dash');
+
+    document.getElementById('modalTime').textContent = d && d.timestamp && d.timestamp.toDate ? d.timestamp.toDate().toLocaleString('zh-TW') : dt('dash');
+
+    modalLocateBtn.disabled = !locationByBadge[badgeId];
+    modalOverlay.classList.add('open');
+  }
+
+  function closeModal() { modalOverlay.classList.remove('open'); currentModalBadgeId = null; }
+
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
+
+  modalLocateBtn.addEventListener('click', () => {
+    const loc = locationByBadge[currentModalBadgeId];
+    if (!loc) return;
+    tabMapBtn.click();
+    map.setView([loc.lat, loc.lng], 17);
+    if (markers[currentModalBadgeId]) markers[currentModalBadgeId].openPopup();
+    closeModal();
+  });
+
+  document.getElementById('resetDataBtn').addEventListener('click', async () => {
+    const ok = confirm(dt('resetConfirm'));
+    if (!ok) return;
+
+    try {
+      const triageSnapshot = await db.collection('triage_records').get();
+      const locationSnapshot = await db.collection('device_locations').get();
+
+      const batch = db.batch();
+      triageSnapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+      locationSnapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+      await batch.commit();
+
+      await db.collection('evacuation_status').doc('current').delete().catch(() => {});
+
+      alert(dt('resetDone'));
+    } catch (e) {
+      alert(dt('resetFail') + e.message);
+    }
+  });
+
+  applyStaticTranslations();
+</script>
+
+</body>
+</html>

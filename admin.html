@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>病人資料管理 - E-Badge</title>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #11161d;
+    --panel-border: #232a34;
+    --text: #e8ecf1;
+    --text-dim: #8b96a5;
+    --accent: #2f81f7;
+    --danger: #e5484d;
+    --ok: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  .layout { display: flex; height: 100vh; }
+
+  .sidebar {
+    width: 300px; flex-shrink: 0;
+    background: var(--panel); border-right: 1px solid var(--panel-border);
+    display: flex; flex-direction: column;
+  }
+  .sidebar-header { padding: 20px 18px 12px; }
+  .sidebar-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .sidebar-header h2 { font-size: 15px; margin: 0; }
+  .lang-btn {
+    padding: 6px 12px; border-radius: 18px; border: 1px solid var(--panel-border);
+    background: transparent; color: var(--text); font-size: 12.5px; font-weight: 700; cursor: pointer;
+  }
+  .lang-btn:hover { border-color: var(--accent); }
+  .new-btn {
+    width: 100%; padding: 10px; border-radius: 8px;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .new-btn:hover { opacity: 0.9; }
+  .search-input {
+    width: 100%; margin-top: 10px; padding: 8px 10px;
+    border-radius: 8px; border: 1px solid var(--panel-border);
+    background: #0d1218; color: var(--text); font-size: 13px;
+  }
+  .resident-list { flex: 1; overflow-y: auto; padding: 8px 12px; }
+  .resident-item {
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 6px;
+    background: #161c25; cursor: pointer; border: 1px solid transparent;
+  }
+  .resident-item:hover { border-color: var(--accent); }
+  .resident-item.active { border-color: var(--accent); background: #1a2230; }
+  .resident-item-name { font-size: 14px; font-weight: 600; }
+  .resident-item-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+  .empty-note { padding: 20px 4px; color: var(--text-dim); font-size: 13px; }
+
+  .main { flex: 1; overflow-y: auto; padding: 28px 40px; }
+  .form-title { font-size: 19px; font-weight: 700; margin-bottom: 4px; }
+  .form-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 24px; }
+
+  .section { margin-bottom: 26px; }
+  .section-title {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  .field label { font-size: 12.5px; color: var(--text-dim); }
+  .field input[type=text], .field input[type=number], .field input[type=tel], .field select, .field textarea {
+    padding: 9px 11px; border-radius: 8px; border: 1px solid var(--panel-border);
+    background: #0d1218; color: var(--text); font-size: 14px;
+    font-family: inherit;
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+  .field-hint { font-size: 11px; color: var(--text-dim); }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row input { width: 16px; height: 16px; }
+
+  .badge-id-readonly {
+    padding: 9px 11px; border-radius: 8px; border: 1px dashed var(--panel-border);
+    background: #0d1218; color: var(--text-dim); font-size: 14px;
+  }
+
+  .actions {
+    display: flex; gap: 10px; margin-top: 30px;
+    padding-top: 20px; border-top: 1px solid var(--panel-border);
+  }
+  .btn {
+    padding: 11px 22px; border-radius: 9px; border: none;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .btn-save { background: var(--accent); color: #fff; }
+  .btn-save:hover { opacity: 0.9; }
+  .btn-delete { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  .btn-delete:hover { background: rgba(229,72,77,0.1); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: 12px 18px; border-radius: 10px;
+    background: var(--panel); border: 1px solid var(--panel-border);
+    font-size: 13.5px; display: none; z-index: 100;
+  }
+  .toast.show { display: block; }
+  .toast.ok { border-color: var(--ok); color: var(--ok); }
+  .toast.err { border-color: var(--danger); color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-header-row">
+        <h2 id="txt-title">👥 病人資料管理</h2>
+        <button class="lang-btn" id="langBtn">EN</button>
+      </div>
+      <button class="new-btn" id="newBtn">＋ <span id="txt-newBtn">新增病人</span></button>
+      <input class="search-input" id="searchInput" placeholder="搜尋姓名或 Badge ID...">
+    </div>
+    <div class="resident-list" id="residentList">
+      <div class="empty-note" id="txt-loading">載入中...</div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="form-title" id="formTitle">新增病人</div>
+    <div class="form-sub" id="formSub">填寫完整資料後按下方「儲存」</div>
+
+    <div class="section">
+      <div class="section-title" id="txt-sectionBasic">基本識別</div>
+      <div class="grid">
+        <div class="field">
+          <label id="txt-labelBadgeId">Badge ID（卡片編號，新增後不可更改）</label>
+          <input type="text" id="f_badge_id" placeholder="例：EVA-A301-1">
+        </div>
+        <div class="field">
+          <label id="txt-labelName">姓名</label>
+          <input type="text" id="f_name">
+        </div>
+        <div class="field">
+          <label id="txt-labelGender">性別</label>
+          <select id="f_gender">
+            <option value="男" id="opt-male">男</option>
+            <option value="女" id="opt-female">女</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="txt-labelAge">年齡</label>
+          <input type="number" id="f_age">
+        </div>
+        <div class="field">
+          <label id="txt-labelBloodType">血型</label>
+          <select id="f_blood_type">
+            <option value="A">A</option>
+            <option value="B">B</option>
+            <option value="AB">AB</option>
+            <option value="O">O</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="checkbox-row" style="margin-top:22px">
+            <input type="checkbox" id="f_dnr">
+            <label for="f_dnr" style="font-size:14px;color:var(--text)" id="txt-labelDnr">DNR（拒絕心肺復甦術）</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title" id="txt-sectionBed">床位資訊</div>
+      <div class="grid">
+        <div class="field"><label id="txt-labelBuilding">大樓/棟別</label><input type="text" id="f_building" placeholder="例：A棟"></div>
+        <div class="field"><label id="txt-labelRoom">房號</label><input type="text" id="f_room" placeholder="例：301室"></div>
+        <div class="field"><label id="txt-labelBed">床位</label><input type="text" id="f_bed" placeholder="例：床位1"></div>
+        <div class="field"><label id="txt-labelWardNum">病房編號（虛擬病床圖用，1~4）</label><input type="number" id="f_ward_number" min="1" max="4"></div>
+        <div class="field"><label id="txt-labelBedNum">床位編號（虛擬病床圖用，1~6）</label><input type="number" id="f_bed_number" min="1" max="6"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title" id="txt-sectionMedical">醫療資訊</div>
+      <div class="grid">
+        <div class="field">
+          <label id="txt-labelMobility">行動輔具</label>
+          <input type="text" id="f_mobility_aid" placeholder="例：輪椅 / 助行器 / 手杖 / 無">
+        </div>
+        <div class="field full">
+          <label id="txt-labelAllergies">過敏原（用逗號分隔多個，例：盤尼西林, 花生）</label>
+          <input type="text" id="f_allergies">
+        </div>
+        <div class="field full">
+          <label id="txt-labelChronic">慢性病史</label>
+          <textarea id="f_chronic_diseases"></textarea>
+        </div>
+        <div class="field full">
+          <label id="txt-labelMeds">目前用藥</label>
+          <textarea id="f_medications"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title" id="txt-sectionEmergency">緊急聯絡人</div>
+      <div class="grid">
+        <div class="field"><label id="txt-labelContactName">姓名（關係）</label><input type="text" id="f_emergency_contact_name" placeholder="例：林小華（女）"></div>
+        <div class="field"><label id="txt-labelContactPhone">電話</label><input type="tel" id="f_emergency_contact_phone" placeholder="例：0921-111-222"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title" id="txt-sectionEvac">疏散資訊</div>
+      <div class="grid">
+        <div class="field">
+          <label id="txt-labelPriority">疏散優先度</label>
+          <select id="f_evacuation_priority">
+            <option value="P1" id="opt-p1">P1（最優先）</option>
+            <option value="P2">P2</option>
+            <option value="P3">P3</option>
+            <option value="P4" id="opt-p4">P4（最後）</option>
+          </select>
+        </div>
+        <div class="field"><label id="txt-labelZone">疏散集合點</label><input type="text" id="f_evacuation_zone" placeholder="例：B棟 避難集合區 3F"></div>
+        <div class="field full">
+          <label id="txt-labelNeeds">疏散需求（用逗號分隔多個，例：需2人移位, 輪椅, 攜帶用藥）</label>
+          <input type="text" id="f_evacuation_needs">
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn btn-save" id="saveBtn">💾 <span id="txt-saveBtn">儲存</span></button>
+      <button class="btn btn-delete" id="deleteBtn" style="display:none">🗑️ <span id="txt-deleteBtn">刪除這位病人</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const I18N = {
+    zh: {
+      title: '👥 病人資料管理',
+      newBtn: '新增病人',
+      searchPlaceholder: '搜尋姓名或 Badge ID...',
+      loading: '載入中...',
+      noMatch: '沒有符合的病人資料',
+      formTitleNew: '新增病人',
+      formSubNew: '請填寫 Badge ID 與基本資料後儲存',
+      formSubEdit: (id) => `編輯中 · Badge ID: ${id}`,
+      sectionBasic: '基本識別', sectionBed: '床位資訊', sectionMedical: '醫療資訊',
+      sectionEmergency: '緊急聯絡人', sectionEvac: '疏散資訊',
+      labelBadgeId: 'Badge ID（卡片編號，新增後不可更改）',
+      labelName: '姓名', labelGender: '性別', labelAge: '年齡', labelBloodType: '血型',
+      labelDnr: 'DNR（拒絕心肺復甦術）',
+      labelBuilding: '大樓/棟別', labelRoom: '房號', labelBed: '床位',
+      labelWardNum: '病房編號（虛擬病床圖用，1~4）', labelBedNum: '床位編號（虛擬病床圖用，1~6）',
+      labelMobility: '行動輔具',
+      labelAllergies: '過敏原（用逗號分隔多個，例：盤尼西林, 花生）',
+      labelChronic: '慢性病史', labelMeds: '目前用藥',
+      labelContactName: '姓名（關係）', labelContactPhone: '電話',
+      labelPriority: '疏散優先度', labelZone: '疏散集合點',
+      labelNeeds: '疏散需求（用逗號分隔多個，例：需2人移位, 輪椅, 攜帶用藥）',
+      saveBtn: '儲存', deleteBtn: '刪除這位病人',
+      optMale: '男', optFemale: '女',
+      optP1: 'P1（最優先）', optP4: 'P4（最後）',
+      unnamed: '（未命名）',
+      toastNeedBadgeId: '請填寫 Badge ID',
+      toastNeedName: '請填寫姓名',
+      toastSaved: '已儲存', toastSaveFail: '儲存失敗：',
+      toastDeleted: '已刪除', toastDeleteFail: '刪除失敗：',
+      deleteConfirm: (name, id) => `確定要刪除「${name}」（${id}）這筆病人資料嗎？此動作無法復原。`,
+      langBtnLabel: 'EN',
+    },
+    en: {
+      title: '👥 Patient Data Management',
+      newBtn: 'New Patient',
+      searchPlaceholder: 'Search name or Badge ID...',
+      loading: 'Loading...',
+      noMatch: 'No matching patients',
+      formTitleNew: 'New Patient',
+      formSubNew: 'Fill in Badge ID and basic info, then save',
+      formSubEdit: (id) => `Editing · Badge ID: ${id}`,
+      sectionBasic: 'Basic Info', sectionBed: 'Bed Info', sectionMedical: 'Medical Info',
+      sectionEmergency: 'Emergency Contact', sectionEvac: 'Evacuation Info',
+      labelBadgeId: 'Badge ID (card number, cannot be changed after creation)',
+      labelName: 'Name', labelGender: 'Gender', labelAge: 'Age', labelBloodType: 'Blood Type',
+      labelDnr: 'DNR (Do Not Resuscitate)',
+      labelBuilding: 'Building', labelRoom: 'Room', labelBed: 'Bed',
+      labelWardNum: 'Ward Number (for Virtual Bed Map, 1-4)', labelBedNum: 'Bed Number (for Virtual Bed Map, 1-6)',
+      labelMobility: 'Mobility Aid',
+      labelAllergies: 'Allergies (comma-separated, e.g. Penicillin, Peanuts)',
+      labelChronic: 'Chronic Conditions', labelMeds: 'Current Medications',
+      labelContactName: 'Name (Relationship)', labelContactPhone: 'Phone',
+      labelPriority: 'Evacuation Priority', labelZone: 'Evacuation Assembly Point',
+      labelNeeds: 'Evacuation Needs (comma-separated, e.g. 2-person transfer, wheelchair, medication)',
+      saveBtn: 'Save', deleteBtn: 'Delete This Patient',
+      optMale: 'Male', optFemale: 'Female',
+      optP1: 'P1 (Highest)', optP4: 'P4 (Lowest)',
+      unnamed: '(Unnamed)',
+      toastNeedBadgeId: 'Please enter a Badge ID',
+      toastNeedName: 'Please enter a name',
+      toastSaved: 'Saved', toastSaveFail: 'Save failed: ',
+      toastDeleted: 'Deleted', toastDeleteFail: 'Delete failed: ',
+      deleteConfirm: (name, id) => `Delete patient record "${name}" (${id})? This cannot be undone.`,
+      langBtnLabel: '中',
+    },
+  };
+
+  let lang = localStorage.getItem('admin_lang') || 'zh';
+  function dt(key) { return I18N[lang][key]; }
+
+  function applyStaticTranslations() {
+    document.getElementById('txt-title').textContent = dt('title');
+    document.getElementById('txt-newBtn').textContent = dt('newBtn');
+    document.getElementById('searchInput').placeholder = dt('searchPlaceholder');
+    document.getElementById('txt-sectionBasic').textContent = dt('sectionBasic');
+    document.getElementById('txt-sectionBed').textContent = dt('sectionBed');
+    document.getElementById('txt-sectionMedical').textContent = dt('sectionMedical');
+    document.getElementById('txt-sectionEmergency').textContent = dt('sectionEmergency');
+    document.getElementById('txt-sectionEvac').textContent = dt('sectionEvac');
+    document.getElementById('txt-labelBadgeId').textContent = dt('labelBadgeId');
+    document.getElementById('txt-labelName').textContent = dt('labelName');
+    document.getElementById('txt-labelGender').textContent = dt('labelGender');
+    document.getElementById('txt-labelAge').textContent = dt('labelAge');
+    document.getElementById('txt-labelBloodType').textContent = dt('labelBloodType');
+    document.getElementById('txt-labelDnr').textContent = dt('labelDnr');
+    document.getElementById('txt-labelBuilding').textContent = dt('labelBuilding');
+    document.getElementById('txt-labelRoom').textContent = dt('labelRoom');
+    document.getElementById('txt-labelBed').textContent = dt('labelBed');
+    document.getElementById('txt-labelWardNum').textContent = dt('labelWardNum');
+    document.getElementById('txt-labelBedNum').textContent = dt('labelBedNum');
+    document.getElementById('txt-labelMobility').textContent = dt('labelMobility');
+    document.getElementById('txt-labelAllergies').textContent = dt('labelAllergies');
+    document.getElementById('txt-labelChronic').textContent = dt('labelChronic');
+    document.getElementById('txt-labelMeds').textContent = dt('labelMeds');
+    document.getElementById('txt-labelContactName').textContent = dt('labelContactName');
+    document.getElementById('txt-labelContactPhone').textContent = dt('labelContactPhone');
+    document.getElementById('txt-labelPriority').textContent = dt('labelPriority');
+    document.getElementById('txt-labelZone').textContent = dt('labelZone');
+    document.getElementById('txt-labelNeeds').textContent = dt('labelNeeds');
+    document.getElementById('txt-saveBtn').textContent = dt('saveBtn');
+    document.getElementById('txt-deleteBtn').textContent = dt('deleteBtn');
+    document.getElementById('opt-male').textContent = dt('optMale');
+    document.getElementById('opt-female').textContent = dt('optFemale');
+    document.getElementById('opt-p1').textContent = dt('optP1');
+    document.getElementById('opt-p4').textContent = dt('optP4');
+    document.getElementById('langBtn').textContent = dt('langBtnLabel');
+
+    // 表單標題/副標，依目前是新增還是編輯模式重新套用
+    if (currentBadgeId) {
+      const r = allResidents.find(x => x.badge_id === currentBadgeId);
+      document.getElementById('formTitle').textContent = (r && r.name) || currentBadgeId;
+      document.getElementById('formSub').textContent = dt('formSubEdit')(currentBadgeId);
+    } else {
+      document.getElementById('formTitle').textContent = dt('formTitleNew');
+      document.getElementById('formSub').textContent = dt('formSubNew');
+    }
+  }
+
+  document.getElementById('langBtn').addEventListener('click', () => {
+    lang = lang === 'zh' ? 'en' : 'zh';
+    localStorage.setItem('admin_lang', lang);
+    applyStaticTranslations();
+    renderList();
+  });
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAeksA4tfRt1JBsAG4F89BvZE--LifIAng",
+    authDomain: "ebadge-4d6e9.firebaseapp.com",
+    databaseURL: "https://ebadge-4d6e9-default-rtdb.firebaseio.com",
+    projectId: "ebadge-4d6e9",
+    storageBucket: "ebadge-4d6e9.firebasestorage.app",
+    messagingSenderId: "847439999989",
+    appId: "1:847439999989:web:4eef64f41b144a274da6bc"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  let allResidents = [];   // [{badge_id, ...data}]
+  let currentBadgeId = null; // null = 新增模式，非null = 編輯模式
+
+  const listEl = document.getElementById('residentList');
+  const searchInput = document.getElementById('searchInput');
+  const toastEl = document.getElementById('toast');
+
+  function showToast(msg, type) {
+    toastEl.textContent = msg;
+    toastEl.className = 'toast show ' + (type || '');
+    setTimeout(() => { toastEl.className = 'toast'; }, 3000);
+  }
+
+  db.collection('residents').onSnapshot((snapshot) => {
+    allResidents = [];
+    snapshot.forEach((docSnap) => {
+      allResidents.push({ badge_id: docSnap.id, ...docSnap.data() });
+    });
+    allResidents.sort((a, b) => (a.badge_id || '').localeCompare(b.badge_id || ''));
+    renderList();
+  });
+
+  function renderList() {
+    const keyword = searchInput.value.trim().toLowerCase();
+    const filtered = allResidents.filter(r =>
+      !keyword ||
+      (r.name || '').toLowerCase().includes(keyword) ||
+      (r.badge_id || '').toLowerCase().includes(keyword)
+    );
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = `<div class="empty-note">${dt('noMatch')}</div>`;
+      return;
+    }
+
+    listEl.innerHTML = '';
+    filtered.forEach((r) => {
+      const item = document.createElement('div');
+      item.className = 'resident-item' + (r.badge_id === currentBadgeId ? ' active' : '');
+      item.innerHTML = `
+        <div class="resident-item-name">${r.name || dt('unnamed')}</div>
+        <div class="resident-item-sub">${r.badge_id} · ${r.building || ''}${r.room || ''}${r.bed || ''}</div>
+      `;
+      item.addEventListener('click', () => loadResidentToForm(r.badge_id));
+      listEl.appendChild(item);
+    });
+  }
+
+  searchInput.addEventListener('input', renderList);
+
+  function clearForm() {
+    document.getElementById('f_badge_id').value = '';
+    document.getElementById('f_badge_id').removeAttribute('readonly');
+    document.getElementById('f_badge_id').classList.remove('badge-id-readonly');
+    document.getElementById('f_name').value = '';
+    document.getElementById('f_gender').value = '男';
+    document.getElementById('f_age').value = '';
+    document.getElementById('f_blood_type').value = 'A';
+    document.getElementById('f_dnr').checked = false;
+    document.getElementById('f_building').value = '';
+    document.getElementById('f_room').value = '';
+    document.getElementById('f_bed').value = '';
+    document.getElementById('f_ward_number').value = '';
+    document.getElementById('f_bed_number').value = '';
+    document.getElementById('f_mobility_aid').value = '';
+    document.getElementById('f_allergies').value = '';
+    document.getElementById('f_chronic_diseases').value = '';
+    document.getElementById('f_medications').value = '';
+    document.getElementById('f_emergency_contact_name').value = '';
+    document.getElementById('f_emergency_contact_phone').value = '';
+    document.getElementById('f_evacuation_priority').value = 'P3';
+    document.getElementById('f_evacuation_zone').value = '';
+    document.getElementById('f_evacuation_needs').value = '';
+  }
+
+  function startNew() {
+    currentBadgeId = null;
+    clearForm();
+    document.getElementById('formTitle').textContent = dt('formTitleNew');
+    document.getElementById('formSub').textContent = dt('formSubNew');
+    document.getElementById('deleteBtn').style.display = 'none';
+    renderList();
+  }
+
+  function loadResidentToForm(badgeId) {
+    const r = allResidents.find(x => x.badge_id === badgeId);
+    if (!r) return;
+    currentBadgeId = badgeId;
+
+    document.getElementById('f_badge_id').value = r.badge_id || '';
+    document.getElementById('f_badge_id').setAttribute('readonly', 'true');
+    document.getElementById('f_name').value = r.name || '';
+    document.getElementById('f_gender').value = r.gender || '男';
+    document.getElementById('f_age').value = r.age || '';
+    document.getElementById('f_blood_type').value = r.blood_type || 'A';
+    document.getElementById('f_dnr').checked = !!r.dnr;
+    document.getElementById('f_building').value = r.building || '';
+    document.getElementById('f_room').value = r.room || '';
+    document.getElementById('f_bed').value = r.bed || '';
+    document.getElementById('f_ward_number').value = r.ward_number || '';
+    document.getElementById('f_bed_number').value = r.bed_number || '';
+    document.getElementById('f_mobility_aid').value = r.mobility_aid || '';
+    document.getElementById('f_allergies').value = Array.isArray(r.allergies) ? r.allergies.join(', ') : '';
+    document.getElementById('f_chronic_diseases').value = r.chronic_diseases || '';
+    document.getElementById('f_medications').value = r.medications || '';
+    document.getElementById('f_emergency_contact_name').value = r.emergency_contact_name || '';
+    document.getElementById('f_emergency_contact_phone').value = r.emergency_contact_phone || '';
+    document.getElementById('f_evacuation_priority').value = r.evacuation_priority || 'P3';
+    document.getElementById('f_evacuation_zone').value = r.evacuation_zone || '';
+    document.getElementById('f_evacuation_needs').value = Array.isArray(r.evacuation_needs) ? r.evacuation_needs.join(', ') : '';
+
+    document.getElementById('formTitle').textContent = r.name || r.badge_id;
+    document.getElementById('formSub').textContent = dt('formSubEdit')(r.badge_id);
+    document.getElementById('deleteBtn').style.display = 'inline-block';
+    renderList();
+  }
+
+  function parseListInput(value) {
+    return value.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  async function handleSave() {
+    const badgeId = document.getElementById('f_badge_id').value.trim();
+    if (!badgeId) {
+      showToast(dt('toastNeedBadgeId'), 'err');
+      return;
+    }
+    const name = document.getElementById('f_name').value.trim();
+    if (!name) {
+      showToast(dt('toastNeedName'), 'err');
+      return;
+    }
+
+    const data = {
+      name,
+      gender: document.getElementById('f_gender').value,
+      age: Number(document.getElementById('f_age').value) || null,
+      blood_type: document.getElementById('f_blood_type').value,
+      dnr: document.getElementById('f_dnr').checked,
+      building: document.getElementById('f_building').value.trim(),
+      room: document.getElementById('f_room').value.trim(),
+      bed: document.getElementById('f_bed').value.trim(),
+      ward_number: Number(document.getElementById('f_ward_number').value) || null,
+      bed_number: Number(document.getElementById('f_bed_number').value) || null,
+      mobility_aid: document.getElementById('f_mobility_aid').value.trim(),
+      allergies: parseListInput(document.getElementById('f_allergies').value),
+      chronic_diseases: document.getElementById('f_chronic_diseases').value.trim(),
+      medications: document.getElementById('f_medications').value.trim(),
+      emergency_contact_name: document.getElementById('f_emergency_contact_name').value.trim(),
+      emergency_contact_phone: document.getElementById('f_emergency_contact_phone').value.trim(),
+      evacuation_priority: document.getElementById('f_evacuation_priority').value,
+      evacuation_zone: document.getElementById('f_evacuation_zone').value.trim(),
+      evacuation_needs: parseListInput(document.getElementById('f_evacuation_needs').value),
+    };
+
+    try {
+      await db.collection('residents').doc(badgeId).set(data);
+      showToast(dt('toastSaved'), 'ok');
+      currentBadgeId = badgeId;
+      document.getElementById('f_badge_id').setAttribute('readonly', 'true');
+      document.getElementById('deleteBtn').style.display = 'inline-block';
+    } catch (e) {
+      showToast(dt('toastSaveFail') + e.message, 'err');
+    }
+  }
+
+  async function handleDelete() {
+    if (!currentBadgeId) return;
+    const ok = confirm(dt('deleteConfirm')(document.getElementById('f_name').value, currentBadgeId));
+    if (!ok) return;
+
+    try {
+      await db.collection('residents').doc(currentBadgeId).delete();
+      showToast(dt('toastDeleted'), 'ok');
+      startNew();
+    } catch (e) {
+      showToast(dt('toastDeleteFail') + e.message, 'err');
+    }
+  }
+
+  document.getElementById('newBtn').addEventListener('click', startNew);
+  document.getElementById('saveBtn').addEventListener('click', handleSave);
+  document.getElementById('deleteBtn').addEventListener('click', handleDelete);
+
+  applyStaticTranslations();
+  startNew();
+</script>
+
+</body>
+</html>
