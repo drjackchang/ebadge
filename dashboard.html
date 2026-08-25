@@ -125,6 +125,7 @@
   .ward-title-sub { font-size: 12px; color: var(--text-dim); font-weight: 400; }
   .bed-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .bed-slot {
+    position: relative;
     border-radius: 10px; padding: 10px; min-height: 70px;
     display: flex; flex-direction: column; justify-content: space-between;
     border: 1.5px solid var(--panel-border); background: #161c25;
@@ -132,9 +133,14 @@
   .bed-slot.clickable { cursor: pointer; }
   .bed-slot.clickable:hover { border-color: var(--accent); }
   .bed-slot.empty { opacity: 0.4; align-items: center; justify-content: center; }
-  .bed-slot-num { font-size: 10.5px; color: var(--text-dim); }
+  .bed-slot-num { font-size: 10.5px; color: var(--text-dim); padding-right: 16px; }
   .bed-slot-name { font-size: 13px; font-weight: 700; margin-top: 2px; }
   .bed-status-chip { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; align-self: flex-start; margin-top: 4px; }
+  .triage-color-light {
+    position: absolute; top: 8px; right: 8px;
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 0 2px #161c25;
+  }
   .bed-slot.status-未疏散 { border-color: #3a4150; }
   .bed-slot.status-待疏散 { border-color: var(--yellow); background: #2a2410; }
   .bed-slot.status-已疏散 { border-color: var(--green); background: #10241a; }
@@ -563,7 +569,16 @@
         } else {
           const status = getBedStatus(resident.badge_id);
           slot.className = `bed-slot clickable status-${status}`;
+
+          let lightHtml = '';
+          if (status === '已疏散') {
+            const triageColor = triageColorByBadge[resident.badge_id];
+            const lightColor = colorMap[triageColor] || '#666';
+            lightHtml = `<span class="triage-color-light" style="background:${lightColor}"></span>`;
+          }
+
           slot.innerHTML = `
+            ${lightHtml}
             <div>
               <div class="bed-slot-num">${dt('bedNum')(bedNum, resident.badge_id)}</div>
               <div class="bed-slot-name">${resident.name || dt('unnamed')}</div>
