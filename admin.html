@@ -149,10 +149,7 @@
         </div>
         <div class="field">
           <label id="txt-labelGender">性別</label>
-          <select id="f_gender">
-            <option value="男" id="opt-male">男</option>
-            <option value="女" id="opt-female">女</option>
-          </select>
+          <input type="text" id="f_gender">
         </div>
         <div class="field">
           <label id="txt-labelAge">年齡</label>
@@ -173,6 +170,7 @@
             <label for="f_dnr" style="font-size:14px;color:var(--text)" id="txt-labelDnr">DNR（拒絕心肺復甦術）</label>
           </div>
         </div>
+        <div class="field"><label id="txt-labelCreatedDate">建檔日期</label><input type="date" id="f_created_date"></div>
       </div>
     </div>
 
@@ -205,6 +203,10 @@
         <div class="field full">
           <label id="txt-labelMeds">目前用藥</label>
           <textarea id="f_medications"></textarea>
+        </div>
+        <div class="field full">
+          <label id="txt-labelBaseline">平時狀況簡述</label>
+          <textarea id="f_baseline_note" placeholder="例：平時意識清楚，助行器可自行走動"></textarea>
         </div>
       </div>
     </div>
@@ -262,6 +264,8 @@
       labelBadgeId: 'Badge ID（卡片編號，新增後不可更改）',
       labelName: '姓名', labelGender: '性別', labelAge: '年齡', labelBloodType: '血型',
       labelDnr: 'DNR（拒絕心肺復甦術）',
+      labelCreatedDate: '建檔日期',
+      labelBaseline: '平時狀況簡述',
       labelBuilding: '大樓/棟別', labelRoom: '房號', labelBed: '床位',
       labelWardNum: '病房編號（虛擬病床圖用，1~4）', labelBedNum: '床位編號（虛擬病床圖用，1~6）',
       labelMobility: '行動輔具',
@@ -295,6 +299,8 @@
       labelBadgeId: 'Badge ID (card number, cannot be changed after creation)',
       labelName: 'Name', labelGender: 'Gender', labelAge: 'Age', labelBloodType: 'Blood Type',
       labelDnr: 'DNR (Do Not Resuscitate)',
+      labelCreatedDate: 'Record Created',
+      labelBaseline: 'Baseline Condition',
       labelBuilding: 'Building', labelRoom: 'Room', labelBed: 'Bed',
       labelWardNum: 'Ward Number (for Virtual Bed Map, 1-4)', labelBedNum: 'Bed Number (for Virtual Bed Map, 1-6)',
       labelMobility: 'Mobility Aid',
@@ -334,6 +340,8 @@
     document.getElementById('txt-labelAge').textContent = dt('labelAge');
     document.getElementById('txt-labelBloodType').textContent = dt('labelBloodType');
     document.getElementById('txt-labelDnr').textContent = dt('labelDnr');
+    document.getElementById('txt-labelCreatedDate').textContent = dt('labelCreatedDate');
+    document.getElementById('txt-labelBaseline').textContent = dt('labelBaseline');
     document.getElementById('txt-labelBuilding').textContent = dt('labelBuilding');
     document.getElementById('txt-labelRoom').textContent = dt('labelRoom');
     document.getElementById('txt-labelBed').textContent = dt('labelBed');
@@ -350,8 +358,6 @@
     document.getElementById('txt-labelNeeds').textContent = dt('labelNeeds');
     document.getElementById('txt-saveBtn').textContent = dt('saveBtn');
     document.getElementById('txt-deleteBtn').textContent = dt('deleteBtn');
-    document.getElementById('opt-male').textContent = dt('optMale');
-    document.getElementById('opt-female').textContent = dt('optFemale');
     document.getElementById('opt-p1').textContent = dt('optP1');
     document.getElementById('opt-p4').textContent = dt('optP4');
     document.getElementById('langBtn').textContent = dt('langBtnLabel');
@@ -445,6 +451,8 @@
     document.getElementById('f_age').value = '';
     document.getElementById('f_blood_type').value = 'A';
     document.getElementById('f_dnr').checked = false;
+    document.getElementById('f_created_date').value = '';
+    document.getElementById('f_baseline_note').value = '';
     document.getElementById('f_building').value = '';
     document.getElementById('f_room').value = '';
     document.getElementById('f_bed').value = '';
@@ -482,6 +490,8 @@
     document.getElementById('f_age').value = r.age || '';
     document.getElementById('f_blood_type').value = r.blood_type || 'A';
     document.getElementById('f_dnr').checked = !!r.dnr;
+    document.getElementById('f_created_date').value = r.created_date || '';
+    document.getElementById('f_baseline_note').value = r.baseline_note || '';
     document.getElementById('f_building').value = r.building || '';
     document.getElementById('f_room').value = r.room || '';
     document.getElementById('f_bed').value = r.bed || '';
@@ -521,10 +531,12 @@
 
     const data = {
       name,
-      gender: document.getElementById('f_gender').value,
+      gender: document.getElementById('f_gender').value.trim(),
       age: Number(document.getElementById('f_age').value) || null,
       blood_type: document.getElementById('f_blood_type').value,
       dnr: document.getElementById('f_dnr').checked,
+      created_date: document.getElementById('f_created_date').value,
+      baseline_note: document.getElementById('f_baseline_note').value.trim(),
       building: document.getElementById('f_building').value.trim(),
       room: document.getElementById('f_room').value.trim(),
       bed: document.getElementById('f_bed').value.trim(),
